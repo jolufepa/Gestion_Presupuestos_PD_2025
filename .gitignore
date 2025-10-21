@@ -179,3 +179,10 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+# Ignorar PDFs generados
+data/presupuestos_pdf/*.pdf
+*.pdf
+# Ignorar venv
+.venv/
+__pycache__/
+*.pyc
