@@ -7,11 +7,45 @@ from reportlab.lib import colors
 from datetime import datetime
 
 # Asume que esta función existe en db.py y te permite obtener todos los detalles de un presupuesto
-from db import obtener_presupuesto_completo_para_pdf
+from db import decrypt_field, obtener_presupuesto_completo_para_pdf
 
 # Definir la carpeta donde se guardarán los PDFs
 PDF_DIR = "data/presupuestos_pdf"
 os.makedirs(PDF_DIR, exist_ok=True)
+# <-- NUEVA FUNCIÓN DE AYUDA PARA PROTEGER DATOS
+def mask_dni(dni):
+    """
+    Oculta parte de un DNI/NIE para proteger la privacidad en el PDF.
+    Muestra los primeros 4 caracteres y reemplaza el resto con asteriscos.
+    """
+    if not dni or len(dni) <= 4:
+        # Si el DNI está vacío o es muy corto, lo devuelve tal cual
+        return dni
+    # Muestra los primeros 4 caracteres y el resto como asteriscos
+    return dni[:4] + '*' * (len(dni) - 4)
+
+
+# <-- MEJORA: Configuración centralizada de la clínica
+# Fácil de modificar sin tocar la lógica del PDF.
+CLINIC_CONFIG = {
+    "name": "Clínica Dental P&D ",
+    "Cif": "J-66472580",
+    "address": "Rambla Just Oliveras, 56 2º 2ª- ",
+    "cd_postal": "08901 L'Hospitalet de Llobregat(Barcelona)",
+    "phone": "933377714",
+    "email": "pddental22@gmail.com"
+}
+
+# <-- MEJORA: Estilos definidos a nivel de módulo para mayor eficiencia
+# Se crean una sola vez al importar el módulo, no en cada llamada a la función.
+styles = getSampleStyleSheet()
+title_style = ParagraphStyle(
+    name='PresupuestoTitle',
+    parent=styles['Heading1'],
+    fontSize=16,
+    alignment=1,  # Centrado
+    spaceAfter=12
+)
 
 def generate_pdf(presupuesto_id):
     """
@@ -22,7 +56,7 @@ def generate_pdf(presupuesto_id):
     # 1. Recuperar datos
     try:
         # La función obtener_presupuesto_completo_para_pdf debe devolver:
-        # (presupuesto_data, paciente_data, detalles_list)
+        # (presupuesto_data, paciente_data, detalles_list) como objetos Row.
         data = obtener_presupuesto_completo_para_pdf(presupuesto_id)
         if not data:
             return "Error: No se encontraron datos para el presupuesto."
@@ -32,19 +66,20 @@ def generate_pdf(presupuesto_id):
     except Exception as e:
         return f"Error al recuperar datos para PDF: {e}"
 
-    # Asignación de datos para claridad
-    presupuesto_num = presupuesto_data[1]
-    fecha_presupuesto = presupuesto_data[3][:10] # Solo la fecha
-    subtotal = presupuesto_data[4]
-    descuento_monto = presupuesto_data[5]
-    iva_porcentaje = presupuesto_data[6]
-    total_final = presupuesto_data[7]
-    notas = presupuesto_data[8]
+    # <-- CORRECCIÓN: Asignación de datos usando nombres de columna (más robusto)
+    # Esto funciona si obtener_presupuesto_completo_para_pdf usa conn.row_factory = sqlite3.Row
+    presupuesto_num = presupuesto_data['numero_presupuesto']
+    fecha_presupuesto = presupuesto_data['fecha'][:10]
+    subtotal = presupuesto_data['subtotal']
+    descuento_monto = presupuesto_data['descuento']
+    iva_porcentaje = presupuesto_data['iva_porcentaje']
+    total_final = presupuesto_data['total']
+    notas = presupuesto_data['notas']
 
-    paciente_nombre_completo = f"{paciente_data[1]} {paciente_data[2]}"
-    paciente_dni = paciente_data[3]
-    paciente_telefono = paciente_data[4]
-    paciente_email = paciente_data[6]
+    paciente_nombre_completo = f"{paciente_data['nombre']} {paciente_data['apellidos']}"
+    paciente_dni = paciente_data['dni_nie']
+    paciente_telefono = decrypt_field(paciente_data['telefono_enc']) # <-- Se necesita importar decrypt_field si no está
+    paciente_email = decrypt_field(paciente_data['email_enc'])   # <-- Se necesita importar decrypt_field si no está
     
     # Configuración del PDF
     pdf_filename = os.path.join(PDF_DIR, f"Presupuesto_{presupuesto_num}.pdf")
@@ -57,30 +92,33 @@ def generate_pdf(presupuesto_id):
         rightMargin=inch/2
     )
     
-    # --- CORRECCIÓN: Inicializar styles y Story dentro de la función ---
-    styles = getSampleStyleSheet()
+    # Story es la lista de elementos que se añadirán al PDF
     Story = []
-    # ------------------------------------------------------------------
 
-    # 2. CABECERA (LOGO y DATOS DE LA CLÍNICA - Aquí ponemos texto simple)
+    # 2. CABECERA (LOGO y DATOS DE LA CLÍNICA)
+    # <-- MEJORA: Usar la configuración centralizada
     clinic_info = [
-        Paragraph("<b>Clínica Dental P&D</b>", styles['Heading2']),
-        Paragraph("C/ Principal, 10, 28001 Madrid", styles['Normal']),
-        Paragraph("Teléfono: 91 XXX XX XX | Email: info@clinicapd.es", styles['Normal']),
+        Paragraph(f"<b>{CLINIC_CONFIG['name']}</b>", styles['Heading2']),
+        Paragraph(f"<b>{CLINIC_CONFIG['Cif']}</b>", styles['Normal']),
+        Paragraph(CLINIC_CONFIG['address'], styles['Normal']),
+        Paragraph(f"<b>{CLINIC_CONFIG['cd_postal']}</b>", styles['Normal']),
+        
+        Paragraph(f"Teléfono: {CLINIC_CONFIG['phone']} | Email: {CLINIC_CONFIG['email']}", styles['Normal']),
         Spacer(1, 0.2 * inch)
     ]
     Story.extend(clinic_info)
 
     # Título del Documento y Número
     title_text = f"PRESUPUESTO ODONTOLÓGICO NÚMERO: {presupuesto_num}"
-    Story.append(Paragraph(f"<font size=14>{title_text}</font>", 
-                           ParagraphStyle(name='TitleStyle', fontSize=14, alignment=1, spaceAfter=12)))
+    Story.append(Paragraph(title_text, title_style))
     
     # 3. DATOS DEL PACIENTE
     Story.append(Paragraph("<b>Datos del Paciente</b>", styles['Heading4']))
+    paciente_dni_masked = mask_dni(paciente_data['dni_nie'])
+    
     paciente_data_table = [
         ['Nombre:', paciente_nombre_completo],
-        ['DNI/NIE:', paciente_dni],
+        ['DNI/NIE:', paciente_dni_masked],  # <-- USAMOS LA VARIABLE ENMASCARADA
         ['Teléfono:', paciente_telefono],
         ['Email:', paciente_email],
         ['Fecha:', fecha_presupuesto]
@@ -101,11 +139,12 @@ def generate_pdf(presupuesto_id):
     table_data = [['DESCRIPCIÓN', 'CANTIDAD', 'PRECIO U. (€)', 'SUBTOTAL (€)']]
     
     for item in detalles_list:
+        # <-- CORRECCIÓN: Acceso a datos por nombre
         # item: (id, presupuesto_id, tratamiento_id, nombre_manual, cantidad, precio_unitario, subtotal)
-        descripcion = item[3] # nombre_manual
-        cantidad = item[4]
-        precio_unitario = f"{item[5]:.2f}"
-        subtotal_item = f"{item[6]:.2f}"
+        descripcion = item['nombre_manual']
+        cantidad = item['cantidad']
+        precio_unitario = f"{item['precio_unitario']:.2f}"
+        subtotal_item = f"{item['subtotal']:.2f}"
         table_data.append([descripcion, cantidad, precio_unitario, subtotal_item])
 
     # Estilos de la tabla de detalles
@@ -154,7 +193,10 @@ def generate_pdf(presupuesto_id):
     Story.append(Spacer(1, 0.5 * inch))
     Story.append(Paragraph("<i>Presupuesto válido por 30 días. Para cualquier duda, contáctenos.</i>", styles['Italic']))
 
-    # Construir el PDF
-    doc.build(Story)
-    
-    return f"✅ PDF generado con éxito: {pdf_filename}"
+    # <-- CORRECCIÓN: Construcción del PDF dentro de un bloque try...except
+    try:
+        doc.build(Story)
+        return f"✅ PDF generado con éxito: {pdf_filename}"
+    except Exception as e:
+        # Esto evita que la aplicación entera se cierre si hay un error al generar el PDF
+        return f"Error al construir el PDF: {e}"
