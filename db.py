@@ -299,18 +299,17 @@ def guardar_paciente(nombre, apellidos, dni_nie, telefono, direccion, email, not
         conn.close()
 
 def obtener_pacientes():
-    """Obtiene todos los pacientes (desencriptando los campos sensibles)."""
-    # <-- MEJORA: Usar Row para acceso por nombre y mayor robustez
+    """Obtiene todos los pacientes ACTIVOS (desencriptando los campos sensibles)."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT id, nombre, apellidos, dni_nie, telefono_enc, direccion_enc, email_enc, notas_enc, fecha_registro FROM Pacientes ORDER BY apellidos, nombre")
+    # <-- CAMBIO CLAVE: Añadimos la condición WHERE activo=1
+    cursor.execute("SELECT id, nombre, apellidos, dni_nie, telefono_enc, direccion_enc, email_enc, notas_enc, fecha_registro FROM Pacientes WHERE activo=1 ORDER BY apellidos, nombre")
     pacientes_raw = cursor.fetchall()
     conn.close()
     
     pacientes_desenc = []
     for p in pacientes_raw:
-        # Acceso por nombre es más seguro y legible
         paciente_tuple = (
             p['id'], p['nombre'], p['apellidos'], p['dni_nie'],
             decrypt_field(p['telefono_enc']),
@@ -324,18 +323,18 @@ def obtener_pacientes():
     return pacientes_desenc
 
 def eliminar_paciente(id_paciente):
-    """Elimina un paciente por ID."""
+    """Archiva (desactiva) a un paciente en lugar de eliminarlo para proteger la integridad de los datos."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
-        cursor.execute("DELETE FROM Pacientes WHERE id=?", (id_paciente,))
+        cursor.execute("UPDATE Pacientes SET activo=0 WHERE id=?", (id_paciente,))
         conn.commit()
         if cursor.rowcount > 0:
-            return f"Paciente {id_paciente} eliminado con éxito."
+            return f"Paciente {id_paciente} archivado con éxito. Ya no aparecerá en la lista, pero sus presupuestos se conservan."
         else:
             return "Paciente no encontrado."
     except sqlite3.Error as e:
-        return f"Error DB al eliminar paciente: {e}"
+        return f"Error DB al archivar paciente: {e}"
     finally:
         conn.close()
 
@@ -370,18 +369,58 @@ def obtener_paciente_por_id(patient_id):
 
 # --- Funciones para Tratamientos (similares mejoras) ---
 def guardar_tratamiento(nombre, descripcion, precio_unitario, id_tratamiento=None):
+    """Guarda o actualiza un tratamiento."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    
     try:
         if id_tratamiento is None:
-            cursor.execute("""INSERT INTO Tratamientos (...) VALUES (?, ?, ?, ?)""", (nombre, descripcion, precio_unitario, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            # --- MODO CREACIÓN (INSERT) ---
+            sql_insert = """
+                INSERT INTO Tratamientos (nombre, descripcion, precio_unitario, fecha_creacion)
+                VALUES (?, ?, ?, ?)
+            """
+            params = (nombre, descripcion, precio_unitario, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            
+            # <-- INICIO DE LA DEPURACIÓN (INSERT) ---
+            print("--- DEPURACIÓN: Guardar Tratamiento (INSERT) ---")
+            print("SQL a ejecutar:")
+            print(sql_insert)
+            print("Parámetros:")
+            print(params)
+            print("-----------------------------------------------")
+            # <-- FIN DE LA DEPURACIÓN ---
+
+            cursor.execute(sql_insert, params)
             conn.commit()
             return "Tratamiento creado con éxito."
         else:
-            cursor.execute("""UPDATE Tratamientos SET nombre=?, descripcion=?, precio_unitario=? WHERE id=?""", (nombre, descripcion, precio_unitario, id_tratamiento))
+            # --- MODO EDICIÓN (UPDATE) ---
+            sql_update = """
+                UPDATE Tratamientos SET nombre=?, descripcion=?, precio_unitario=?
+                WHERE id=?
+            """
+            params = (nombre, descripcion, precio_unitario, id_tratamiento)
+
+            # <-- INICIO DE LA DEPURACIÓN (UPDATE) ---
+            print("--- DEPURACIÓN: Guardar Tratamiento (UPDATE) ---")
+            print("SQL a ejecutar:")
+            print(sql_update)
+            print("Parámetros:")
+            print(params)
+            print("-----------------------------------------------")
+            # <-- FIN DE LA DEPURACIÓN ---
+
+            cursor.execute(sql_update, params)
             conn.commit()
             return "Tratamiento actualizado con éxito."
+
     except sqlite3.Error as e:
+        # <-- INICIO DE LA DEPURACIÓN (ERROR) ---
+        print("--- DEPURACIÓN: Error de SQLite en Tratamiento ---")
+        print(f"Error detectado: {e}")
+        print("----------------------------------------------------")
+        # <-- FIN DE LA DEPURACIÓN ---
         return f"Error DB al guardar tratamiento: {e}"
     finally:
         conn.close()

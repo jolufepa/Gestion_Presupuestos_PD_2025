@@ -515,6 +515,7 @@ class BudgetForm:
         self.paciente_combo = ttk.Combobox(header_frame, textvariable=self.paciente_var, 
                                            values=list(self.pacientes_data.keys()), state='normal', width=50)
         self.paciente_combo.grid(row=1, column=1, columnspan=3, padx=5, pady=5, sticky="ew")
+        # <-- ESTA ES LA LÍNEA QUE CAUSA EL ERROR. ASEGÚRATE DE QUE EL MÉTODO EXISTA.
         self.paciente_combo.bind('<KeyRelease>', self.filter_pacientes_list)
         
         # Frame 2: Detalles (Tabla)
@@ -767,34 +768,53 @@ class BudgetForm:
         self.master.destroy()
 
     def load_budget_data(self):
-        """Carga los datos del presupuesto existente para edición (PENDIENTE)."""
+        """Carga los datos del presupuesto existente para editar."""
         presupuesto_raw, detalles_raw = obtener_presupuestos(self.presupuesto_id)
         
         if presupuesto_raw:
+            # Cargar datos generales del presupuesto
             self.numero_presupuesto = presupuesto_raw['numero_presupuesto']
             self.num_label.config(text=self.numero_presupuesto)
             
+            # Cargar el paciente en el combobox
             pacientes_id_map = {v:k for k,v in self.pacientes_data.items()}
             paciente_nombre = pacientes_id_map.get(presupuesto_raw['paciente_id'], "")
             self.paciente_var.set(paciente_nombre)
             
-            # Cargar los totales
+            # Cargar los totales y notas
             self.descuento_var.set(f"{presupuesto_raw['descuento']:.2f}")
             self.iva_var.set(f"{presupuesto_raw['iva_porcentaje']:.2f}")
             self.notas_text.delete("1.0", tk.END)
             self.notas_text.insert("1.0", presupuesto_raw['notas'] or "")
             
-            # Cargar los detalles
-            # Este paso es complejo y requiere formateo específico del Treeview
+            # Cargar los detalles en la tabla
+            for item in self.details_tree.get_children():
+                self.details_tree.delete(item)
             
-            self.calculate_totals() # Recalcular con los valores cargados
+            for item in detalles_raw:
+                descripcion = item['nombre_manual']
+                cantidad = item['cantidad']
+                precio = f"{item['precio_unitario']:.2f}"
+                subtotal = f"{item['subtotal']:.2f}"
+                
+                iid = self.details_tree.insert("", "end", values=(descripcion, cantidad, precio, subtotal))
+                
+                self.detalle_items[iid] = {
+                    "id_tratamiento": item['tratamiento_id'],
+                    "nombre_manual": item['nombre_manual'],
+                    "cantidad": item['cantidad'],
+                    "precio": item['precio_unitario'],
+                    "subtotal": item['subtotal']
+                }
+            
+            self.calculate_totals()
         else:
             messagebox.showerror("Error", f"No se encontró el presupuesto con ID {self.presupuesto_id}")
-            self.master.destroy()            
+            self.master.destroy()
+            
     def add_manual_item(self):
         """Abre el formulario para añadir un ítem personalizado."""
         manual_window = tk.Toplevel(self.master)
-        # Pasamos la función 'insert_manual_item' como callback
         ManualItemForm(manual_window, self.insert_manual_item) 
         manual_window.grab_set()
         self.master.wait_window(manual_window)
@@ -815,6 +835,8 @@ class BudgetForm:
             "subtotal": subtotal
         }
         self.calculate_totals()
+
+    # <-- ESTE ES EL MÉTODO QUE FALTABA. ASEGÚRATE DE QUE ESTÉ DENTRO DE LA CLASE Y CON LA INDENTACIÓN CORRECTA.
     def filter_pacientes_list(self, event):
         """Filtra la lista de pacientes en el Combobox al teclear."""
         search_term = self.paciente_var.get().lower()
@@ -827,6 +849,7 @@ class BudgetForm:
             if search_term in name.lower()
         ]
         self.paciente_combo['values'] = filtered_list
+ 
 
 class ChangePasswordForm:
     def __init__(self, master, username):
