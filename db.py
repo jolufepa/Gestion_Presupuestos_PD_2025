@@ -1,15 +1,30 @@
 import os
 import sqlite3
+import sys
 from cryptography.fernet import Fernet
 import re
 from datetime import datetime
 import bcrypt
+from utils import get_application_path
+
+
+def resource_path(relative_path):
+    """ Obtiene la ruta absoluta a un recurso, funciona para desarrollo y para PyInstaller """
+    try:
+        # PyInstaller crea una carpeta temporal y guarda la ruta en _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 
 # --- CONFIGURACIÓN GLOBAL ---
-DB_PATH = 'data/clinica_dental.db'
-KEY_PATH = 'data/app.key'
-DATA_DIR = 'data'
-BACKUP_DIR = 'backups'
+app_path = get_application_path()
+DB_PATH = os.path.join(app_path, 'data', 'clinica_dental.db')
+KEY_PATH = os.path.join(app_path, 'data', 'app.key')
+DATA_DIR = os.path.join(app_path, 'data')
+BACKUP_DIR = os.path.join(app_path, 'backups')
 
 # --- 1. Funciones de Encriptación y Clave RGPD ---
 
@@ -70,7 +85,6 @@ def setup_db():
     """Conecta a la DB, crea tablas y poblado inicial."""
     conn = None
     try:
-        # <-- MEJORA: Usar Row para acceso por nombre, aunque aquí no se explota mucho
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -88,7 +102,8 @@ def setup_db():
                 direccion_enc BLOB,
                 email_enc BLOB,
                 notas_enc BLOB,
-                fecha_registro TEXT
+                fecha_registro TEXT,
+                activo INTEGER DEFAULT 1
             )
         """)
         
@@ -103,7 +118,7 @@ def setup_db():
             )
         """)
         
-        # Tabla USUARIOS (FASE 3)
+        # Tabla USUARIOS
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS Usuarios (
                 id INTEGER PRIMARY KEY,
@@ -146,7 +161,7 @@ def setup_db():
             )
         """)
 
-        # --- 2. POBLAMIENTO DE DATOS DE EJEMPLO (Pacientes/Tratamientos) ---
+        # --- 2. POBLAMIENTO DE DATOS DE EJEMPLO ---
         
         # Comprobar y poblar Pacientes
         cursor.execute("SELECT COUNT(*) FROM Pacientes")
@@ -159,7 +174,6 @@ def setup_db():
             direccion_enc = encrypt_field("C/ Ejemplo, 1, 28001 Madrid")
             email_enc = encrypt_field("paciente@ejemplo.es")
             
-            # 1. Inserción Paciente
             cursor.execute("""
                 INSERT INTO Pacientes (nombre, apellidos, dni_nie, telefono_enc, direccion_enc, email_enc, fecha_registro)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -167,14 +181,12 @@ def setup_db():
                   sqlite3.Binary(direccion_enc), sqlite3.Binary(email_enc), datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             paciente_id = cursor.lastrowid
             
-            # 2. Inserción Tratamiento
             cursor.execute("""
                 INSERT INTO Tratamientos (nombre, descripcion, precio_unitario, fecha_creacion)
                 VALUES (?, ?, ?, ?)
             """, ('Empaste Simple', 'Obturación de composite en pieza simple.', 75.00, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             tratamiento_id = cursor.lastrowid
 
-            # 3. Inserción Presupuesto y Detalle
             subtotal = 75.00 * 2 
             total = subtotal 
             cursor.execute("""
@@ -187,12 +199,10 @@ def setup_db():
                 VALUES (?, ?, ?, ?, ?)
             """, (presupuesto_id, tratamiento_id, 2, 75.00, subtotal))
             
-            # Commit de los datos de ejemplo (Pacientes/Tratamientos)
             conn.commit()
             print("✅ Datos de ejemplo insertados.")
 
-
-        # --- 3. POBLAMIENTO DE USUARIO ADMINISTRADOR (Separado y con su propia comprobación) ---
+        # --- 3. POBLAMIENTO DE USUARIO ADMINISTRADOR ---
         cursor.execute("SELECT COUNT(*) FROM Usuarios")
         if cursor.fetchone()[0] == 0:
             
@@ -205,21 +215,18 @@ def setup_db():
                 VALUES (?, ?, ?, ?)
             """, ('admin', sqlite3.Binary(hashed_password), 'Administrador', datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             
-            conn.commit() # Commit SOLO para el usuario admin
+            conn.commit() 
             print("✅ Usuario 'admin' (pass: admin123) insertado.")
-
 
         return "✅ Base de datos configurada."
         
     except sqlite3.Error as e:
-        # Se asegura de que la conexión exista antes de hacer rollback
         if conn:
             conn.rollback()
         return f"❌ Error de SQLite: {e}"
     except Exception as e:
         return f"❌ Error inesperado: {e}"
     finally:
-        # Cierra la conexión UNA SOLA VEZ
         if conn:
             conn.close()
 

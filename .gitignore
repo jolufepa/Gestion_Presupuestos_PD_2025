@@ -186,3 +186,4 @@ data/presupuestos_pdf/*.pdf
 .venv/
 __pycache__/
 *.pyc
+notas_Tecnico.txt

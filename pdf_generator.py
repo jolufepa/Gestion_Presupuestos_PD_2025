@@ -5,12 +5,24 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 from datetime import datetime
+from utils import get_application_path, resource_path
 
 # Asume que esta función existe en db.py y te permite obtener todos los detalles de un presupuesto
 from db import decrypt_field, obtener_presupuesto_completo_para_pdf
+import sys
+def resource_path(relative_path):
+    """ Obtiene la ruta absoluta a un recurso, funciona para desarrollo y para PyInstaller """
+    try:
+        # PyInstaller crea una carpeta temporal y guarda la ruta en _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 
 # Definir la carpeta donde se guardarán los PDFs
-PDF_DIR = "data/presupuestos_pdf"
+PDF_DIR = os.path.join(get_application_path(), "data", "presupuestos_pdf")
 os.makedirs(PDF_DIR, exist_ok=True)
 # <-- NUEVA FUNCIÓN DE AYUDA PARA PROTEGER DATOS
 def mask_dni(dni):
