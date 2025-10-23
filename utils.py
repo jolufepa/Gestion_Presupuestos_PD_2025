@@ -1,17 +1,16 @@
-# En utils.py
+# utils.py - VERSIÓN SIMPLIFICADA
 import sys
 import os
 
+# Esta función ahora está en config.py, pero la mantenemos por compatibilidad
 def get_application_path():
     """
     Obtiene la ruta del directorio donde se ejecuta la aplicación.
     Funciona para desarrollo (.py) y para producción (.exe).
     """
     if getattr(sys, 'frozen', False):
-        # Si es un ejecutable empaquetado, usa la ruta del .exe
         return os.path.dirname(sys.executable)
     else:
-        # Si es un script, usa la ruta del propio archivo script
         return os.path.dirname(os.path.abspath(__file__))
 
 def resource_path(relative_path):

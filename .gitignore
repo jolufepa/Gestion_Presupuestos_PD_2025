@@ -187,3 +187,4 @@ data/presupuestos_pdf/*.pdf
 __pycache__/
 *.pyc
 notas_Tecnico.txt
+license.lic

@@ -1,11 +1,12 @@
-
 import os
 import tkinter as tk
 from tkinter import messagebox, ttk
 from datetime import datetime
 import hashlib
 import base64
+
 from cryptography.fernet import Fernet # Ya la tenías, pero la necesitas para guardar la licencia
+from config import SECRET_KEY, CLINIC_CONFIG, APP_NAME
 from db import (
     DB_PATH, get_key, obtener_paciente_por_id, verify_user, setup_db, get_user_role, 
     obtener_pacientes, guardar_paciente, eliminar_paciente, validar_dni_nie, 
@@ -14,16 +15,9 @@ from db import (
     cambiar_contrasena, crear_nuevo_usuario, obtener_usuarios, eliminar_usuario
 )
 from pdf_generator import generate_pdf
-from utils import resource_path, get_application_path   
+from utils import resource_path, get_application_path
+   
 
-SECRET_KEY = "0tONl5rIqubrEBL1po5h6Pha1r0cIb"  # <-- Define aquí tu clave secreta
-def get_key():
-    """
-    Devuelve la clave de encriptación secreta para Fernet.
-    ¡Debe ser la misma clave que usaste para encriptar el archivo!
-    """
-    # PEGA AQUÍ LA CLAVE QUE GENERASTE EN EL PASO 1
-    return b'WaYvAQl8Wuut0Bc8BwuZW81WJeI3TIqOQUuiQANN91s='
 def generate_license_key(client_name):
         """
         Genera una clave de licencia basada en el nombre del cliente y una clave secreta.
@@ -43,11 +37,12 @@ def generate_license_key(client_name):
         formatted_key = '-'.join([license_key[i:i+4] for i in range(0, len(license_key), 4)])
         
         return formatted_key.upper()
+
     
 class LoginWindow:
     def __init__(self, master):
         self.master = master
-        master.title("Clínica Dental - Acceso")
+        master.title(APP_NAME)
         master.geometry("300x200")
         master.resizable(False, False)
 
@@ -65,6 +60,17 @@ class LoginWindow:
         # 2. Si la licencia es válida, configurar la UI de login
         self.setup_login_ui()
         self.center_window()
+    def login(self):  # ← AÑADIR ESTE MÉTODO FALTANTE
+        """Gestiona el evento de clic en el botón de acceso."""
+        username = self.username_entry.get()
+        password = self.password_entry.get()
+
+        rol = verify_user(username, password)
+        if rol:
+            messagebox.showinfo("Éxito", f"Bienvenido, {username} ({rol})")
+            self.open_main_window(username, rol)
+        else:
+            messagebox.showerror("Error de Acceso", "Usuario o contraseña incorrectos.")    
 
     def setup_login_ui(self):
         """Configura los widgets de la UI de login de forma limpia."""
@@ -93,64 +99,50 @@ class LoginWindow:
         y = (self.master.winfo_screenheight() // 2) - (height // 2)
         self.master.geometry(f'{width}x{height}+{x}+{y}')
 
+    # En login.py - MODIFICAR la función check_license
+
     def check_license(self):
         """Comprueba si existe un archivo de licencia válido en la carpeta del programa."""
         app_dir = get_application_path()
         license_path = os.path.join(app_dir, 'license.lic')
 
-        print(f"DEBUG: Buscando licencia en la ruta: {license_path}")
         try:
+            if not os.path.exists(license_path):
+                return False
+                
             with open(license_path, 'rb') as f:
                 encrypted_data = f.read()
 
-            print("Archivo de licencia encontrado. Intentando descifrar...")
-            cipher_suite = Fernet(get_key())
-            decrypted_data = cipher_suite.decrypt(encrypted_data).decode('utf-8')
+            # Obtener clave y desencriptar
+            key_result = get_key()
+            cipher_suite = Fernet(key_result)
+            decrypted_data = cipher_suite.decrypt(encrypted_data)
+            decoded_data = decrypted_data.decode('utf-8')
 
-            print(f"Datos descifrados: {decrypted_data}")
-            client_name, license_key = decrypted_data.split('|')
-
-            print(f"Nombre de cliente: {client_name}, Clave: {license_key}")
+            client_name, license_key = decoded_data.split('|')
             expected_key = generate_license_key(client_name)
-            print(f"Clave esperada: {expected_key}")
 
-            is_valid = license_key == expected_key
-            print(f"¿La licencia es válida? {is_valid}")
-
-            return is_valid
+            return license_key == expected_key
 
         except FileNotFoundError:
-            print("Error: El archivo license.lic no fue encontrado.")
             return False
         except Exception as e:
-            print(f"Error al verificar licencia: {e}")
+            # Solo mostrar error en consola, no interfaz gráfica
+            print(f"Error de licencia: {e}")
             return False
-
     def open_main_window(self, username, rol):
         """Destruye la ventana de login y abre la ventana principal."""
         self.master.destroy() 
         main_root = tk.Tk()
         MainWindow(main_root, username, rol)
-        main_root.mainloop()
-
-    def login(self):
-        """Gestiona el evento de clic en el botón de acceso."""
-        username = self.username_entry.get()
-        password = self.password_entry.get()
-
-        rol = verify_user(username, password)
-        if rol:
-            messagebox.showinfo("Éxito", f"Bienvenido, {username} ({rol})")
-            self.open_main_window(username, rol)
-        else:
-            messagebox.showerror("Error de Acceso", "Usuario o contraseña incorrectos.")
+        main_root.mainloop()    
 
 class MainWindow:
     def __init__(self, master, username, rol):
         self.master = master
         self.username = username
         self.rol = rol
-        master.title(f"Clínica Dental - Gestión ({rol.title()})")
+        master.title(f"{APP_NAME} ({rol.title()})") 
         
         self.notebook = ttk.Notebook(master)
         self.notebook.pack(pady=10, padx=10, expand=True, fill="both")
@@ -181,7 +173,7 @@ class MainWindow:
         x = (ws/2) - (w/2)
         y = (hs/2) - (h/2)
         master.geometry('%dx%d+%d+%d' % (w, h, x, y))
-
+    
     def create_menu(self):
         menubar = tk.Menu(self.master)
         self.master.config(menu=menubar)
@@ -619,6 +611,19 @@ class BudgetForm:
         # Cargar datos si es edición
         if presupuesto_id:
             self.load_budget_data()
+    # AÑADIR en BudgetForm (dentro de la clase)
+    def filter_pacientes_list(self, event):
+        """Filtra la lista de pacientes en el Combobox al teclear."""
+        search_term = self.paciente_var.get().lower()
+        if not search_term:
+            self.paciente_combo['values'] = list(self.pacientes_data.keys())
+            return
+            
+        filtered_list = [
+            name for name in self.pacientes_data.keys() 
+            if search_term in name.lower()
+        ]
+        self.paciente_combo['values'] = filtered_list        
         
     def get_pacientes_data(self):
         """Mapea pacientes a un diccionario {nombre_completo: id_paciente}."""
@@ -1009,11 +1014,8 @@ class LicenseRegistrationWindow:
                 license_data = f"{client_name}|{license_key}"
                 encrypted_data = cipher_suite.encrypt(license_data.encode('utf-8'))
                 
-                # <-- USA TU FUNCIÓN DE UTILS
                 app_dir = get_application_path()
                 license_path = os.path.join(app_dir, 'license.lic')
-                
-                print(f"DEBUG: Guardando licencia en la ruta: {license_path}")
                 
                 with open(license_path, 'wb') as f:
                     f.write(encrypted_data)
@@ -1026,7 +1028,7 @@ class LicenseRegistrationWindow:
             messagebox.showerror("Error de Activación", "El nombre o la clave de licencia son incorrectos.")
 
 if __name__ == "__main__":
-    print("Iniciando configuración de la base de datos...")
+   
     setup_db()
     root = tk.Tk()
     

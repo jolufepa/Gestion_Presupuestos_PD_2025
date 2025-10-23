@@ -5,9 +5,10 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 from datetime import datetime
-from utils import get_application_path, resource_path
+
 
 # Asume que esta función existe en db.py y te permite obtener todos los detalles de un presupuesto
+from config import CLINIC_CONFIG, PDF_DIR
 from db import decrypt_field, obtener_presupuesto_completo_para_pdf
 import sys
 def resource_path(relative_path):
@@ -21,9 +22,7 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-# Definir la carpeta donde se guardarán los PDFs
-PDF_DIR = os.path.join(get_application_path(), "data", "presupuestos_pdf")
-os.makedirs(PDF_DIR, exist_ok=True)
+
 # <-- NUEVA FUNCIÓN DE AYUDA PARA PROTEGER DATOS
 def mask_dni(dni):
     """
@@ -36,17 +35,6 @@ def mask_dni(dni):
     # Muestra los primeros 4 caracteres y el resto como asteriscos
     return dni[:4] + '*' * (len(dni) - 4)
 
-
-# <-- MEJORA: Configuración centralizada de la clínica
-# Fácil de modificar sin tocar la lógica del PDF.
-CLINIC_CONFIG = {
-    "name": "Clínica Dental P&D ",
-    "Cif": "J-66472580",
-    "address": "Rambla Just Oliveras, 56 2º 2ª- ",
-    "cd_postal": "08901 L'Hospitalet de Llobregat(Barcelona)",
-    "phone": "933377714",
-    "email": "pddental22@gmail.com"
-}
 
 # <-- MEJORA: Estilos definidos a nivel de módulo para mayor eficiencia
 # Se crean una sola vez al importar el módulo, no en cada llamada a la función.
@@ -67,8 +55,6 @@ def generate_pdf(presupuesto_id):
     
     # 1. Recuperar datos
     try:
-        # La función obtener_presupuesto_completo_para_pdf debe devolver:
-        # (presupuesto_data, paciente_data, detalles_list) como objetos Row.
         data = obtener_presupuesto_completo_para_pdf(presupuesto_id)
         if not data:
             return "Error: No se encontraron datos para el presupuesto."
@@ -111,10 +97,9 @@ def generate_pdf(presupuesto_id):
     # <-- MEJORA: Usar la configuración centralizada
     clinic_info = [
         Paragraph(f"<b>{CLINIC_CONFIG['name']}</b>", styles['Heading2']),
-        Paragraph(f"<b>{CLINIC_CONFIG['Cif']}</b>", styles['Normal']),
+        Paragraph(f"<b>{CLINIC_CONFIG['cif']}</b>", styles['Normal']),
         Paragraph(CLINIC_CONFIG['address'], styles['Normal']),
-        Paragraph(f"<b>{CLINIC_CONFIG['cd_postal']}</b>", styles['Normal']),
-        
+        Paragraph(f"<b>{CLINIC_CONFIG['postal_code']}</b>", styles['Normal']),
         Paragraph(f"Teléfono: {CLINIC_CONFIG['phone']} | Email: {CLINIC_CONFIG['email']}", styles['Normal']),
         Spacer(1, 0.2 * inch)
     ]
